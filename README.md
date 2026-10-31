@@ -20,6 +20,8 @@ Then start the app:
 
 Open http://127.0.0.1:8000. If the key is missing, the page shows setup steps.
 
+To use the app from another computer on the same network, start it with `python main.py --lan` and open the link it prints. The link holds a new password each time, and anyone with it can run tasks and approve actions on this PC, so don't share it. Your firewall must allow Python, and everything still happens on the PC running `main.py`.
+
 To check the model before a demo, run `python smoke_test.py`. It sends three real requests (text, tool call, image) and prints PASS or FAIL for each.
 
 ## What you can ask

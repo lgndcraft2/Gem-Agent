@@ -1,9 +1,12 @@
 """Gemma Agent web server. Standard library only."""
 import base64
+import hmac
 import json
 import os
 import queue
 import re
+import secrets
+import socket
 import sys
 import threading
 import time
@@ -29,6 +32,7 @@ runs = {}
 runs_lock = threading.Lock()
 log_lock = threading.Lock()
 active_run = None
+lan_token = None  # set only in --lan mode
 conversation = []  # earlier tasks and answers, for follow-up questions
 
 
@@ -151,12 +155,33 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def host_ok(self):
+        if lan_token:
+            return self.token_ok(self.link_token()) or self.token_ok(self.cookie_token())
         # Blocks DNS rebinding: other sites must not be able to drive this server.
         return self.headers.get("Host", "").split(":")[0] in (HOST, "localhost")
 
+    def token_ok(self, value):
+        return bool(value) and hmac.compare_digest(value.encode(), lan_token.encode())
+
+    def link_token(self):
+        match = re.search(r"[?&]token=([\w-]+)", self.path)
+        return match.group(1) if match else ""
+
+    def cookie_token(self):
+        match = re.search(r"(?:^|;\s*)gem_token=([\w-]+)", self.headers.get("Cookie", ""))
+        return match.group(1) if match else ""
+
     def do_GET(self):
         if not self.host_ok():
-            return self.send_json({"error": "Bad host."}, 403)
+            return self.send_json({"error": "Open the full link printed by main.py."}, 403)
+        if lan_token and self.token_ok(self.link_token()):
+            # Swap the link for a cookie, so the password leaves the address bar.
+            self.send_response(302)
+            self.send_header("Set-Cookie", "gem_token=%s; HttpOnly; SameSite=Strict; Path=/" % lan_token)
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         path = self.path.split("?")[0]
         stream = re.fullmatch(r"/api/stream/([0-9a-f]{32})", path)
         if path == "/":
@@ -226,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self.host_ok():
-            return self.send_json({"error": "Bad host."}, 403)
+            return self.send_json({"error": "Open the full link printed by main.py."}, 403)
         data = self.read_body()
         if data is None:
             return
@@ -282,10 +307,20 @@ class Server(ThreadingHTTPServer):
     allow_reuse_address = os.name != "nt"
 
 
-def serve(port=PORT):
+def wifi_address():
+    """Find this PC's network address. A UDP connect sends no packets."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(("10.255.255.255", 1))
+        return probe.getsockname()[0]
+
+
+def serve(port=PORT, lan=False):
+    global lan_token
     tools.seed_sandbox()
+    if lan:
+        lan_token = secrets.token_urlsafe(18)
     try:
-        server = Server((HOST, port), Handler)
+        server = Server(("0.0.0.0" if lan else HOST, port), Handler)
     except OSError:
         print("Port %d is in use. Stop the other program and try again." % port)
         return 1
@@ -293,7 +328,11 @@ def serve(port=PORT):
         print("Warning: OPENROUTER_API_KEY is not set. The page will show setup steps.")
     else:
         threading.Thread(target=agent.check_models, daemon=True).start()
-    print("Gemma Agent is running at http://%s:%d" % (HOST, port), flush=True)
+    if lan:
+        print("Network mode. On your other PC, open this link:", flush=True)
+        print("http://%s:%d/?token=%s" % (wifi_address(), port, lan_token), flush=True)
+    else:
+        print("Gemma Agent is running at http://%s:%d" % (HOST, port), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -302,4 +341,4 @@ def serve(port=PORT):
 
 
 if __name__ == "__main__":
-    sys.exit(serve())
+    sys.exit(serve(lan="--lan" in sys.argv))
