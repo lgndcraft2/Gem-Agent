@@ -27,7 +27,7 @@ The free models were rate-limited by the provider almost all the time: 1 of 12 p
 
 Demo 4 (uploaded image): 5 of 5 on the final prompt. Results were checked from the files on disk, not from what the model said. 50 scripted regression checks and 21 PC tool checks also pass, apart from one check that expected the old count of 7 tools.
 
-Live PC tools, one run each on the real model: find a file, open it as a follow-up, open Calculator, and read the screen, all worked. These ran before the last tool description changes.
+Final build, real model, no outages: all four demos 2 of 2, delete approval 6 of 6, and no second modal after a Deny. Find a file, open it as a follow-up, open Calculator, and read the screen each worked on one run. The scripted regression checks were last run before the final tool-text changes.
 
 ## Bugs found by live testing
 - Truncated HTTP replies crashed a run. They now count as a retryable network error.
