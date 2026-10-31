@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gemma Agent</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: dark;
+  --ink: #17102a; --panel: #211838; --raised: #2c2148; --line: #463768;
+  --text: #f6f1ff; --muted: #bdb0da; --amethyst: #a98bf5;
+  --topaz: #f5b84b; --aqua: #7fe3d4; --rose: #ff8fa3;
+  --display: Bahnschrift, "DIN Alternate", "Avenir Next Condensed", "Roboto Condensed", system-ui, sans-serif;
+  --body: "Segoe UI Variable Text", "Segoe UI", -apple-system, Roboto, system-ui, sans-serif;
+  --code: "Cascadia Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--ink); color: var(--text); font: 18px/1.45 var(--body); display: flex; flex-direction: column; }
+button, textarea, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--raised); border-radius: 6px; padding: 10px 14px; }
+button:hover:not(:disabled) { border-color: var(--topaz); }
+button:focus-visible, textarea:focus-visible, summary:focus-visible, input:focus-visible { outline: 3px solid var(--aqua); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.primary { background: var(--topaz); border-color: var(--topaz); color: #2a1a00; font: 600 20px var(--display); }
+
+header { display: flex; align-items: center; gap: 28px; padding: 12px 20px 10px; background: var(--panel); flex-wrap: wrap; }
+h1 { display: flex; align-items: center; gap: 12px; font: 600 30px/1 var(--display); margin: 0; }
+.mark { width: 24px; height: 24px; color: var(--topaz); }
+.spacer { flex: 1; }
+.stat { color: var(--muted); font: 18px var(--display); }
+.stat b { color: var(--text); font-weight: 600; font-size: 24px; font-variant-numeric: tabular-nums; }
+#model { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -1px; background: var(--muted); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.dot.running { background: var(--topaz); animation: pulse 1.2s infinite; }
+.dot.waiting { background: var(--rose); animation: pulse 1.2s infinite; }
+.dot.good { background: var(--aqua); }
+.dot.bad { background: var(--rose); }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* One baguette-cut stone per step: the page's signature. */
+#facets { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; padding: 0 20px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.facet { height: 14px; background: var(--raised); clip-path: polygon(0 50%, 9px 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 9px 100%); transition: background-color .3s; }
+.facet.done { background: var(--amethyst); }
+.facet.now { background: var(--topaz); animation: pulse 1.2s infinite; }
+.facet.won { background: var(--aqua); }
+.facet.lost { background: var(--rose); }
+
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 310px minmax(0, 1fr) 290px; }
+section { min-height: 0; overflow-y: auto; padding: 16px 20px; }
+#left { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+#right { background: var(--panel); border-left: 1px solid var(--line); }
+h2 { font: 600 20px var(--display); color: var(--muted); margin: 4px 0 0; }
+textarea { width: 100%; height: 130px; resize: vertical; background: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.row { display: flex; gap: 10px; }
+.row button { flex: 1; }
+.demos { display: flex; flex-direction: column; gap: 8px; }
+.demos button { text-align: left; }
+#imageRow { font-size: 16px; color: var(--muted); }
+#imageRow input { width: 100%; font-size: 15px; margin-top: 4px; }
+
+#setup { display: none; background: #3a2a12; border: 1px solid var(--topaz); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }
+#setup code { background: var(--ink); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; font-family: var(--code); }
+#empty { margin: 16vh auto 0; max-width: 30ch; }
+#empty p { font: 600 40px/1.15 var(--display); margin: 0 0 10px; }
+#empty span { color: var(--muted); font-size: 20px; }
+
+.step-label { color: var(--muted); font: 18px var(--display); margin: 16px 0 8px; }
+.card { background: var(--panel); border-left: 4px solid var(--amethyst); border-radius: 0 6px 6px 0; padding: 12px 16px; margin-bottom: 10px; animation: slide .25s ease-out; }
+.card.look { border-left-color: var(--aqua); }
+.card.change { border-left-color: var(--topaz); }
+.card.danger { border-left-color: var(--rose); }
+@keyframes slide { from { opacity: 0; transform: translateX(-16px); } }
+.card-head { display: flex; align-items: center; gap: 10px; font: 600 22px var(--display); }
+.card-head svg { width: 24px; height: 24px; flex: none; color: var(--muted); }
+pre { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 16px/1.4 var(--code); }
+.args { color: #cdbdfb; }
+.result { color: var(--muted); max-height: 240px; overflow-y: auto; }
+.result.failed { color: var(--rose); }
+details.thinking { color: var(--muted); margin-bottom: 10px; }
+details.thinking summary { cursor: pointer; font-style: italic; }
+
+.final { background: #123a3a; border: 2px solid var(--aqua); border-radius: 12px; padding: 16px 20px; margin-top: 16px; }
+.final .card-head { color: var(--aqua); }
+.final .body { font-size: 24px; line-height: 1.35; margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 60ch; }
+.failure { background: #43202e; border: 2px solid var(--rose); }
+.failure .card-head { color: var(--rose); }
+.failure .body { font-size: 20px; }
+
+#tree { font: 16px/1.5 var(--code); margin-top: 8px; }
+#tree ul { list-style: none; margin: 0; padding-left: 16px; }
+#tree > ul { padding-left: 0; }
+#tree li { overflow-wrap: anywhere; }
+#tree .folder { color: #cdbdfb; font-weight: 700; }
+#tree .fresh { color: #2a1a00; background: var(--topaz); border-radius: 3px; padding: 0 4px; animation: settle 3s ease-out forwards; }
+@keyframes settle { 70% { background: var(--topaz); color: #2a1a00; } 100% { background: transparent; color: var(--topaz); } }
+
+#modal { display: none; position: fixed; inset: 0; background: rgba(10, 5, 22, .78); align-items: center; justify-content: center; padding: 16px; }
+#modal.open { display: flex; }
+.dialog { background: var(--raised); border: 2px solid var(--rose); border-radius: 12px; padding: 24px; width: 100%; max-width: 720px; max-height: 100%; overflow-y: auto; }
+.dialog h3 { margin: 0 0 8px; font: 600 32px var(--display); }
+.dialog p { margin: 0; color: var(--muted); }
+.dialog .row { margin-top: 18px; }
+#modalShotBox img { display: block; width: 100%; max-height: 46vh; object-fit: contain; margin-top: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.you { font: 600 24px var(--display); color: var(--topaz); margin: 22px 0 0; overflow-wrap: anywhere; }
+.deny { border-color: var(--rose); }
+
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  main { display: block; }
+  section { overflow: visible; padding: 14px 16px; }
+  #left { border-right: 0; border-bottom: 1px solid var(--line); }
+  #right { border-left: 0; border-top: 1px solid var(--line); }
+  header { gap: 12px; padding: 10px 16px; }
+  #facets { padding: 0 16px 10px; gap: 2px; }
+  .facet { clip-path: polygon(0 50%, 4px 0, calc(100% - 4px) 0, 100% 50%, calc(100% - 4px) 100%, 4px 100%); }
+  #empty { margin: 32px 0; }
+  #empty p { font-size: 32px; }
+  .spacer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .dot, .facet { animation: none !important; }
+  #tree .fresh { animation: none; background: transparent; color: var(--topaz); }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-gem" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3 7.5 9 12 21l4.500-12L15 3"/></g>
+    <g id="i-list_files" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></g>
+    <g id="i-read_file" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g>
+    <g id="i-write_file" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 20h4L20 8l-4-4L4 16z"/></g>
+    <g id="i-make_dir" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h6l2 3h10v10H3z"/><path d="M12 12v4M10 14h4"/></g>
+    <g id="i-move_file" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h17M14 6l6 6-6 6"/></g>
+    <g id="i-run_python" fill="currentColor"><path d="M7 4v16l13-8z"/></g>
+    <g id="i-delete_file" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></g>
+    <g id="i-find_file" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></g>
+    <g id="i-open_path" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 13v7H4V5h7M14 4h6v6M20 4l-9 9"/></g>
+    <g id="i-open_app" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></g>
+    <g id="i-see_screen" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></g>
+  </defs>
+</svg>
+<header>
+  <h1><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gem"/></svg>Gemma Agent</h1>
+  <span class="spacer"></span>
+  <span class="stat" id="model"></span>
+  <span class="stat">Step <b id="steps">0/12</b></span>
+  <span class="stat"><b id="elapsed">0.0s</b></span>
+  <span class="stat"><span class="dot" id="dot"></span><span id="status">Ready</span></span>
+</header>
+<div id="facets" aria-hidden="true"></div>
+<main>
+  <section id="left" aria-label="Task">
+    <h2><label for="task">Task</label></h2>
+    <textarea id="task" placeholder="Tell the agent what to do"></textarea>
+    <div id="imageRow">
+      <label for="image">Image (under 3MB)</label>
+      <input id="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+    </div>
+    <div class="row">
+      <button class="primary" id="run">Run task</button>
+      <button id="reset">Start over</button>
+    </div>
+    <h2>Try a demo</h2>
+    <div class="demos" id="demos"></div>
+  </section>
+  <section id="center" aria-label="Live steps" aria-live="polite">
+    <div id="setup">
+      <strong>Add your API key to start.</strong> Put this line in a file named .env next to main.py, then restart the app:<br>
+      <code>OPENROUTER_API_KEY=your-key</code>
+    </div>
+    <div id="empty"><p>Give the agent a job and watch it work.</p><span>Pick a demo, or type your own task.</span></div>
+    <div id="log"></div>
+  </section>
+  <section id="right" aria-label="Sandbox files">
+    <h2>Sandbox files</h2>
+    <div id="tree"></div>
+  </section>
+</main>
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="dialog">
+    <h3 id="modalTitle"></h3>
+    <p>The agent is waiting for your answer.</p>
+    <pre id="modalBody"></pre>
+    <div id="modalShotBox"></div>
+    <div class="row">
+      <button class="deny" id="deny"></button>
+      <button class="primary" id="approve"></button>
+    </div>
+  </div>
+</div>
+<script>
+const CONFIG = /*CONFIG*/null;
+const $ = id => document.getElementById(id);
+const MAX_STEPS = 12;
+const KINDS = { list_files: "look", read_file: "look", find_file: "look", see_screen: "look", write_file: "change", make_dir: "change", move_file: "change", open_path: "change", open_app: "change", delete_file: "danger" };
+const ASKS = {
+  delete_file: ["Delete this file?", "Delete file", "Keep file"],
+  open_path: ["Open this?", "Open it", "Don't open"],
+  open_app: ["Open this app?", "Open app", "Don't open"],
+  see_screen: ["Share this screenshot?", "Share screenshot", "Don't share"],
+};
+const DEMOS = [
+  ["Organize downloads", "Organize the downloads folder into subfolders by file type and write report.md listing what moved."],
+  ["Top 5 products", "Read sales.csv, find the top 5 products by revenue, and write insights.md with a short summary."],
+  ["Fix buggy.py", "buggy.py has a bug. Find it, fix it, run it, and show me the output."],
+  ["Describe image", "Look at the uploaded image and write a short checklist of what you see to notes.md.", true],
+  ["What's on my screen?", "Look at my screen and tell me what's on it in two sentences."],
+];
+let source = null, runId = null, timer = null, startTime = 0, openCard = null, imageData = null;
+let currentStep = 0, knownFiles = null;
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", "#i-" + (name in { ...KINDS, run_python: 1 } ? name : "gem"));
+  svg.appendChild(use);
+  return svg;
+}
+function scrollDown() {
+  // Works for the scrolling center column and for the stacked phone layout.
+  const last = $("log").lastElementChild;
+  if (last) last.scrollIntoView({ block: "end" });
+}
+function add(node) {
+  $("empty").style.display = "none";
+  $("log").appendChild(node);
+  scrollDown();
+}
+function setStatus(kind, text) {
+  $("dot").className = "dot " + kind;
+  $("status").textContent = text;
+}
+function setBusy(busy) {
+  $("run").disabled = busy || !CONFIG.keySet;
+  $("reset").disabled = busy;
+  document.querySelectorAll("#demos button").forEach(b => b.disabled = busy || !CONFIG.keySet);
+}
+function drawFacets() {
+  const stones = [...$("facets").children];
+  stones.forEach((stone, index) => {
+    const number = index + 1;
+    stone.className = "facet" + (number < currentStep ? " done" : number === currentStep ? " now" : "");
+  });
+}
+function endFacets(success) {
+  const stones = [...$("facets").children].slice(0, currentStep);
+  stones.forEach((stone, index) => {
+    const last = index === stones.length - 1;
+    stone.className = "facet " + (success ? "won" : last ? "lost" : "done");
+  });
+}
+function clearRun() {
+  currentStep = 0;
+  drawFacets();
+  $("steps").textContent = "0/" + MAX_STEPS;
+}
+function formatArgs(args) {
+  const parts = Object.entries(args || {}).map(([k, v]) => {
+    const value = typeof v === "string" ? v : JSON.stringify(v);
+    return k + ": " + (value.length > 400 ? value.slice(0, 400) + " ..." : value);
+  });
+  return parts.join("\n");
+}
+function failureCard(message) {
+  const card = el("div", "final failure");
+  card.appendChild(el("div", "card-head", "Run stopped"));
+  card.appendChild(el("div", "body", message));
+  add(card);
+}
+async function send(url, body) {
+  const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || "Request failed.");
+  return data;
+}
+
+function drawTree(items, parent, prefix, seen) {
+  const list = el("ul");
+  for (const item of items) {
+    const path = prefix + item.name;
+    const row = el("li");
+    // Size is part of the key, so an edited file lights up as well as a new one.
+    const key = item.type === "dir" ? path + "/" : path + "|" + item.size;
+    seen.add(key);
+    const fresh = knownFiles && !knownFiles.has(key) ? " fresh" : "";
+    if (item.type === "dir") {
+      row.appendChild(el("span", "folder" + fresh, item.name + "/"));
+      drawTree(item.children, row, path + "/", seen);
+    } else {
+      row.appendChild(el("span", fresh.trim(), item.name));
+    }
+    list.appendChild(row);
+  }
+  parent.appendChild(list);
+}
+async function refreshTree() {
+  try {
+    const items = await (await fetch("/api/files")).json();
+    const seen = new Set();
+    $("tree").replaceChildren();
+    drawTree(items, $("tree"), "", seen);
+    knownFiles = seen;
+    const fresh = document.querySelector("#tree .fresh");
+    if (fresh && matchMedia("(min-width: 901px)").matches) fresh.scrollIntoView({ block: "nearest" });
+  } catch (err) { /* the next refresh will try again */ }
+}
+
+function finish(kind, text) {
+  clearInterval(timer);
+  if (source) source.close();
+  source = null;
+  $("modal").classList.remove("open");
+  setStatus(kind, text);
+  setBusy(false);
+  refreshTree();
+}
+function listen(id) {
+  source = new EventSource("/api/stream/" + id);
+  let failed = false;
+  const on = (name, handler) => source.addEventListener(name, e => handler(JSON.parse(e.data)));
+  on("step_start", d => {
+    currentStep = d.step;
+    drawFacets();
+    $("steps").textContent = d.step + "/" + d.max;
+    $("model").textContent = d.model;
+    add(el("div", "step-label", "Step " + d.step));
+  });
+  on("thinking", d => {
+    const block = el("details", "thinking");
+    block.appendChild(el("summary", "", "Thinking"));
+    block.appendChild(el("pre", "", d.text));
+    add(block);
+  });
+  on("tool_call", d => {
+    const card = el("div", "card " + (KINDS[d.tool] || ""));
+    const head = el("div", "card-head");
+    head.appendChild(icon(d.tool));
+    head.appendChild(el("span", "", d.tool));
+    card.appendChild(head);
+    const args = formatArgs(d.args);
+    if (args) card.appendChild(el("pre", "args", args));
+    openCard = card;
+    add(card);
+  });
+  on("tool_result", d => {
+    if (openCard) openCard.appendChild(el("pre", "result" + (d.ok ? "" : " failed"), d.result));
+    setStatus("running", "Working");
+    scrollDown();
+    refreshTree();
+  });
+  on("approval_needed", d => {
+    setStatus("waiting", "Needs your answer");
+    const [title, yes, no] = ASKS[d.tool] || ["Allow this?", "Allow", "Don't allow"];
+    $("modalTitle").textContent = title;
+    $("approve").textContent = yes;
+    $("deny").textContent = no;
+    $("modalBody").textContent = formatArgs(d.args);
+    $("modalShotBox").replaceChildren();
+    if (d.image) {
+      const shot = el("img");
+      shot.src = d.image;
+      shot.alt = "The screenshot the agent wants to see";
+      $("modalShotBox").appendChild(shot);
+    }
+    $("modal").classList.add("open");
+    $("approve").focus();
+  });
+  on("final_answer", d => {
+    const card = el("div", "final");
+    card.appendChild(el("div", "card-head", "Finished"));
+    card.appendChild(el("div", "body", d.text.replace(/`/g, "")));
+    add(card);
+  });
+  on("done", d => {
+    endFacets(d.success);
+    finish(d.success ? "good" : "bad", d.success ? "Finished" : "Stopped");
+  });
+  source.addEventListener("error", e => {
+    if (e.data) {
+      failed = true;
+      failureCard(JSON.parse(e.data).message);
+    } else if (source && !failed) {
+      failureCard("The connection to the app dropped. Check that main.py is still running, then run the task again.");
+      endFacets(false);
+      finish("bad", "Disconnected");
+    }
+  });
+}
+async function run(task, fresh) {
+  task = task.trim();
+  if (!task) return $("task").focus();
+  if (fresh) $("log").replaceChildren();
+  $("empty").style.display = "none";
+  add(el("p", "you", task));
+  clearRun();
+  setBusy(true);
+  setStatus("running", "Working");
+  startTime = Date.now();
+  clearInterval(timer);
+  timer = setInterval(() => { $("elapsed").textContent = ((Date.now() - startTime) / 1000).toFixed(1) + "s"; }, 100);
+  try {
+    runId = (await send("/api/run", { task, image: imageData, fresh: !!fresh })).run_id;
+    imageData = null;
+    $("image").value = "";
+    listen(runId);
+  } catch (err) {
+    failureCard(err.message);
+    finish("bad", "Stopped");
+  }
+}
+async function answer(approve) {
+  $("modal").classList.remove("open");
+  setStatus("running", "Working");
+  try {
+    await send("/api/approve/" + runId, { approve });
+  } catch (err) {
+    failureCard(err.message);
+  }
+}
+
+for (let i = 0; i < MAX_STEPS; i++) $("facets").appendChild(el("span", "facet"));
+for (const [label, task, needsImage] of DEMOS) {
+  if (needsImage && !CONFIG.imageEnabled) continue;
+  const button = el("button", "", label);
+  button.addEventListener("click", () => {
+    $("task").value = task;
+    if (needsImage && !imageData) {
+      failureCard("Choose an image first, then press Run task.");
+      return $("image").focus();
+    }
+    run(task, true);
+  });
+  $("demos").appendChild(button);
+}
+$("run").addEventListener("click", () => run($("task").value, false));
+$("approve").addEventListener("click", () => answer(true));
+$("deny").addEventListener("click", () => answer(false));
+$("reset").addEventListener("click", async () => {
+  try {
+    await send("/api/reset");
+    $("log").replaceChildren();
+    $("empty").style.display = "";
+    clearRun();
+    $("elapsed").textContent = "0.0s";
+    setStatus("", "Ready");
+    knownFiles = null;
+    refreshTree();
+  } catch (err) {
+    failureCard(err.message);
+  }
+});
+$("image").addEventListener("change", e => {
+  const file = e.target.files[0];
+  imageData = null;
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) {
+    e.target.value = "";
+    return failureCard("That image is over 3MB. Choose a smaller one.");
+  }
+  const reader = new FileReader();
+  reader.onload = () => { imageData = reader.result; };
+  reader.readAsDataURL(file);
+});
+
+$("model").textContent = CONFIG.model;
+if (!CONFIG.imageEnabled) $("imageRow").style.display = "none";
+if (!CONFIG.keySet) $("setup").style.display = "block";
+setBusy(false);
+refreshTree();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+.env
+sandbox/
+runs.jsonl
+.check.json
+__pycache__/
+.playwright-mcp/
+.impeccable/
